@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "wtf workflow definition (list-based shape)",
+  "description": "Source of truth for the structure of a wtf workflow file. Cross-reference and graph rules (state names, duplicate triggers, terminal/branch_end reachability, join guard restriction) are checked in code in wtf/schema.py.",
+  "type": "object",
+  "required": ["name", "initial", "states", "transitions"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {"type": "string", "minLength": 1},
+    "version": {"type": "string"},
+    "description": {"type": "string"},
+    "initial": {"type": "string", "minLength": 1},
+    "states": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/state"}
+    },
+    "transitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/transition"}
+    }
+  },
+  "$defs": {
+    "state": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "terminal": {"type": "boolean"},
+        "fork": {"type": "boolean"},
+        "branch_end": {"type": "boolean"},
+        "context": {"type": "string"},
+        "prompt": {"type": "string"},
+        "tools": {"type": "array", "items": {"type": "string"}},
+        "skills": {"type": "array", "items": {"type": "string"}},
+        "inputs": {"type": "array", "items": {"type": "string"}},
+        "outputs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": ["trigger", "source", "dest"],
+      "additionalProperties": false,
+      "properties": {
+        "trigger": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "dest": {"type": "string", "minLength": 1},
+        "guards": {"type": "array", "items": {"$ref": "#/$defs/guard"}},
+        "require_approval": {"type": "boolean"},
+        "join": {"type": "boolean"},
+        "roles": {"type": "array", "items": {"type": "string"}},
+        "description": {"type": "string"}
+      }
+    },
+    "guard": {
+      "type": "object",
+      "required": ["type", "params"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "file_exists",
+            "file_contains",
+            "command_passes",
+            "command_fails",
+            "field_eq",
+            "field_ne"
+          ]
+        },
+        "params": {"type": "object"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "file_exists"}}},
+          "then": {"properties": {"params": {"required": ["path"]}}}
+        },
+        {
+          "if": {"properties": {"type": {"const": "file_contains"}}},
+          "then": {"properties": {"params": {"required": ["path", "pattern"]}}}
+        },
+        {
+          "if": {"properties": {"type": {"enum": ["command_passes", "command_fails"]}}},
+          "then": {"properties": {"params": {"required": ["command"]}}}
+        },
+        {
+          "if": {"properties": {"type": {"enum": ["field_eq", "field_ne"]}}},
+          "then": {"properties": {"params": {"required": ["field", "value"]}}}
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+spec-first-tdd/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# This project specifically warns against a .venv inside this iCloud-synced
+# folder (iCloud marks files hidden, Python ignores hidden .pth files) — the
+# real venv lives at ~/venvs/wtf/, outside the repo. Ignored here in case one
+# ever gets created by mistake.
+.venv/
+
+# macOS
+.DS_Store
