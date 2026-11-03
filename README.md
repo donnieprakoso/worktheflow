@@ -52,6 +52,7 @@ wtf init
 # Author a workflow — by hand in .wtf/workflows/<name>.yaml
 wtf validate <name>
 wtf graph <name> --preview   # see it as a diagram before running it
+wtf graph <name> --output terminal   # or as a numbered tree, right here in the terminal
 
 # Run it
 wtf start <name> --input '{"key": "value"}'

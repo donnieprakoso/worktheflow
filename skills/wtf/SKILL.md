@@ -3,21 +3,27 @@ name: wtf
 description: >
   Set up, author, and run wtf workflows. Modes: 'wtf init' (create .wtf/ files and folders),
   'wtf build' (write a new workflow file and validate it, all at once or interactively one
-  question at a time), and 'wtf run' (start or continue a run and drive it step by step). Also
-  use when the user asks how a wtf workflow is written or what wtf run/done/propose/approve/reject
-  does.
+  question at a time), 'wtf run' (start or continue a run and drive it step by step),
+  'wtf approve' / 'wtf reject [reason]' (the human decides on a run that's waiting for
+  approval, without needing a raw shell command), 'wtf status' / 'wtf log' (check what's
+  happening with a run, or its full history, without starting a run loop), and 'wtf graph'
+  (render a workflow file's structure — never needs a run to exist first). Also use when the
+  user asks how a wtf workflow is written or what wtf run/done/propose/approve/reject does.
 ---
 
 # wtf
 
-The first word after `/wtf` picks the mode: `init`, `build`, or `run`. If there is no word, ask
-which one.
+The first word after `/wtf` picks the mode: `init`, `build`, `run`, `approve`, `reject`,
+`status`, `log`, or `graph`. If there is no word, ask which one.
 
 ## Every mode
 
-1. **Banner.** Read the banner file and print its contents verbatim in a code block, before
+1. **Banner, once per conversation.** If you have not already shown it earlier in this same
+   conversation, read the banner file and print its contents verbatim in a code block, before
    anything else:
    `/Users/donnie.prakoso/Library/Mobile Documents/iCloud~md~obsidian/Documents/01-ActiveFiles/Project_2026-10-27_TechWorkflow/wtf/src/wtf/banner.txt`
+   If you already showed it earlier this conversation (any mode, including this one), skip it —
+   go straight to the next step.
 2. **CLI check.** Run `wtf --version`. It should print `wtf version 0.1.0`. If the command is not
    found, stop and tell the user to install it:
    `uv tool install --editable "/Users/donnie.prakoso/Library/Mobile Documents/iCloud~md~obsidian/Documents/01-ActiveFiles/Project_2026-10-27_TechWorkflow/wtf"`
@@ -124,7 +130,9 @@ Creates the `.wtf/` files and folders.
    - Rejection needs an explicit `reject` transition from the state the proposal leaves.
 6. Run `wtf validate <name>`. Fix every error and run it again until it exits 0. Show the user any
    warnings.
-7. Run `wtf graph <name>` and show the diagram. Offer `--preview` to open it in a browser.
+7. Run `wtf graph <name>` and show the diagram. Offer `--preview` to open it in a browser, or `--output terminal`
+   for a numbered tree right in this terminal (numbers like `4.1`/`4.2` mark a fork/choice branch — handy for
+   pointing at a specific step without typing its name).
 8. Do not start a run in build mode unless the user asks for one.
 
 ## run
@@ -136,8 +144,12 @@ Creates the `.wtf/` files and folders.
    a. Run `wtf next`. Read `current_state`, `status`, `node` (its context, skills and tools),
       `allowed_transitions`, `inputs`, and `state_file` (this state's own handoff file).
    b. If `status` is `completed`, report that the run is finished and stop.
-   c. If `status` is `pending_approval`, tell the user to run `wtf approve` or
-      `wtf reject --reason "<why>"`, and stop. Never approve or reject your own proposal.
+   c. If `status` is `pending_approval`, tell the user what's pending (the transition and its
+      destination) and that they can say `/wtf approve` or `/wtf reject <reason>` to decide —
+      then stop. Never approve or reject your own proposal, and never run `wtf approve`/
+      `wtf reject` yourself here, even if the user seems to want it done quickly. That decision
+      is only ever made in response to the user explicitly invoking `/wtf approve` or
+      `/wtf reject`, never as a step inside `run` mode.
    d. Before starting work, read `state_file` (in case this is a retry) and any earlier states'
       handoff files you need as input — open them directly, there is no other way data moves
       between states. Do the work for this state, following its `context`. Load each skill in
@@ -168,3 +180,86 @@ Creates the `.wtf/` files and folders.
 5. If the state's context conflicts with these rules, stop and ask the user.
 6. Do not commit, push, deploy, or contact anyone outside the project unless the state's context asks
    for it.
+
+## approve
+
+The human's explicit decision to let a pending transition through. Only ever run this because the
+user just typed `/wtf approve` themselves — never as a step inside `run` mode, and never because the
+user asked for something else that merely implies it (e.g. "looks good" in passing isn't the same as
+`/wtf approve`; if you're not sure they mean the slash command, ask).
+
+1. **Setup check.** If `.wtf/` does not exist, stop and say "Run `/wtf init` first."
+2. Run `wtf status`. If no run is `pending_approval`, say so and stop — there's nothing to approve.
+   If more than one run is pending, ask which one and pass `--run <id>`.
+3. Run `wtf approve`.
+4. Read the result:
+   - 0: approved. Report the new state in one line (and if it completed the run, say so).
+   - 2 with failed guards: the conditions that held when it was proposed no longer hold (the run can
+     wait a long time between `propose` and `approve`). Report exactly what failed — this is not an
+     error, it's the gate correctly re-checking itself.
+   - 1: an error. Report the message.
+
+## reject
+
+The human's explicit decision to send a pending transition back. Same rule as `approve`: only run
+this because the user just invoked `/wtf reject`, never on your own initiative.
+
+1. **Setup check.** If `.wtf/` does not exist, stop and say "Run `/wtf init` first."
+2. Whatever text follows `/wtf reject` is the reason — pass it straight through as
+   `wtf reject --reason "<text>"`. A reason is optional; `/wtf reject` alone is fine too.
+3. Run `wtf status` first if you're not sure a run is actually `pending_approval` — if none is, say
+   so and stop. If more than one is pending, ask which one and pass `--run <id>`.
+4. Run `wtf reject --reason "<text>"` (or `wtf reject` with no reason given).
+5. Read the result:
+   - 0: rejected. Report where the run went.
+   - 2 (no explicit `reject` transition from that state): report it plainly — the workflow's author
+     didn't declare a reject path out of this gate, so the run stays pending until someone fixes the
+     workflow or approves it instead.
+   - 1: an error. Report the message.
+
+## status
+
+A quick look at what's going on — read-only, doesn't advance anything, doesn't require an active
+`run` conversation.
+
+1. **Setup check.** If `.wtf/` does not exist, stop and say "Run `/wtf init` first."
+2. If the user named a run (an id, or "the latest", or similar), run `wtf status --run <id>` and
+   show its current state, status, and inputs.
+3. Otherwise run `wtf status` with no `--run` — it lists every run with its workflow, status, and
+   current state. Summarize it; don't just dump the raw table if there are many runs and the user
+   asked a narrower question (e.g. "is anything waiting on me" — filter to `pending_approval` ones).
+4. If the user wants to see where a run sits in the whole workflow, not just its current state, run
+   `wtf graph <workflow> --output terminal` (add `--run <id>` if it's not the latest run) — it
+   overlays that run's done/current progress on the numbered tree.
+5. If nothing is running at all, say so plainly.
+
+## log
+
+The full, readable history of one run.
+
+1. **Setup check.** If `.wtf/` does not exist, stop and say "Run `/wtf init` first."
+2. If the user named a run, run `wtf log --run <id>`. Otherwise run `wtf log` with no `--run` — it
+   resolves to the most recent running run, or the most recent run of any status if none are active.
+3. Present it as a short narrative of what happened, in order, not just the raw lines — this is
+   often read by someone who wasn't there when the run started.
+4. If there are no runs at all, say so plainly.
+
+## graph
+
+Render a workflow's structure. **This never needs a run to exist** — `wtf graph` reads the
+workflow file itself, nothing else. Do not gate this on `.wtf/` or on any run being active, and
+never tell the user to run `/wtf build` first just because no *run* exists yet — only say that if
+the workflow file itself genuinely cannot be found anywhere.
+
+1. **Find the workflow.** The user may name a workflow already saved in `.wtf/workflows/<name>.yaml`,
+   or point at any `.yaml`/`.yml` file directly, anywhere in the project (`wtf graph <path>` accepts
+   a path exactly as it accepts a name — it does not need to live in `.wtf/workflows/`, and does not
+   need `.wtf/` to exist at all for the path form). If they didn't say which and `.wtf/workflows/` is
+   empty, don't conclude there's nothing to graph — look for a workflow file elsewhere in the project
+   (one just discussed, or found by name/content) before asking the user where it is.
+2. **Render.** Default is `wtf graph <name-or-path>` (Mermaid, printed as text). Offer `--preview`
+   to open it in a browser, or `--output terminal` for a numbered Rich tree right in this terminal
+   (numbers like `4.1`/`4.2` mark a fork/choice branch). If a run already exists for this workflow,
+   `--output terminal` overlays its current/done progress automatically — no extra step needed.
+3. If the workflow fails `wtf validate` (graph runs this check itself), show the errors instead of
+   a diagram.

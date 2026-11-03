@@ -17,6 +17,7 @@ from . import preview
 from .utils import get_wtf_dir, ensure_dir, state_file_path
 from .engine import WtfEngine
 from .graph import to_mermaid
+from .graphterm import build_tree
 from .schema import SchemaValidator, read_schema_text
 
 app = typer.Typer(name="wtf", help="WorkTheFlow - strict policy-enforcing workflow engine")
@@ -215,12 +216,73 @@ def _load_for_graph(engine: WtfEngine, arg: str) -> dict:
     return engine.load_workflow(arg)
 
 
+def _derive_run_view(state: Dict[str, Any], events: List[Dict[str, Any]]) -> Tuple[set, set]:
+    """Current/completed state-name sets for `graph --output terminal`, derived
+    from a run's recorded events (no engine-managed history field exists to
+    read directly). A forked run's `branches` yields one current state per
+    active branch instead of a single one."""
+    completed = set()
+    for e in events:
+        et = e.get("type")
+        if et == "run_started":
+            completed.add(e["initial_state"])
+        elif et in ("transition", "joined", "rejected") and "to" in e:
+            completed.add(e["to"])
+        elif et == "forked":
+            completed.add(e["from"])
+        elif et == "approved":
+            to = (e.get("transition") or {}).get("to")
+            if to:
+                completed.add(to)
+
+    if state.get("branches"):
+        current = {b["current_state"] for b in state["branches"].values()}
+    elif state.get("current_state"):
+        current = {state["current_state"]}
+    else:
+        current = set()
+
+    completed -= current
+    return current, completed
+
+
+def _graph_run_view(engine: WtfEngine, workflow_arg: str, run_id: Optional[str]) -> Tuple[set, set]:
+    """Resolve the current/completed sets to overlay on `graph --output
+    terminal`. No run found for this workflow: both sets empty (bare
+    structure, not an error — a workflow can be graphed before it's ever run)."""
+    if run_id:
+        try:
+            state = _load_run_checked(engine, run_id)
+        except FileNotFoundError:
+            _fail(f"Run not found: {run_id}", 1)
+    else:
+        name_guess = Path(workflow_arg).stem
+        matches = [r for r in engine.store.list_runs() if r["workflow"] in (workflow_arg, name_guess)]
+        if not matches:
+            return set(), set()
+        chosen = _first((r for r in reversed(matches) if r["status"] == "running"), matches[-1])
+        state = _load_run_checked(engine, chosen["run_id"])
+
+    events = engine.store.load_events(state["run_id"])
+    return _derive_run_view(state, events)
+
+
 @app.command()
 def graph(
     workflow: str = typer.Argument(..., help="Workflow name in .wtf/workflows/, or a path to a workflow file."),
-    preview_diagram: bool = typer.Option(False, "--preview", help="Render the diagram and open it in the default browser."),
+    preview_diagram: bool = typer.Option(False, "--preview", help="Render the diagram and open it in the default browser. Only applies to --output mermaid/html."),
+    output: str = typer.Option("mermaid", "--output", help="mermaid (default, stdout), terminal (Rich tree, this terminal), or html (browser preview)."),
+    run_id: Optional[str] = typer.Option(None, "--run", help="Run ID to overlay progress from. Only applies to --output terminal; default is the latest run for this workflow, if any."),
 ):
-    """Print a Mermaid stateDiagram-v2 for a workflow. Output only; nothing is read back."""
+    """Render a workflow's structure. Output only by default; --output terminal
+    additionally overlays a run's progress, when one exists, but never changes it."""
+    if output not in ("mermaid", "terminal", "html"):
+        _fail(f"--output must be one of: mermaid, terminal, html (got '{output}')", 1)
+    if preview_diagram and output == "terminal":
+        _fail("--preview has no effect with --output terminal", 1)
+    if run_id and output != "terminal":
+        _fail("--run only applies with --output terminal", 1)
+
     engine = WtfEngine()
     try:
         wf = _load_for_graph(engine, workflow)
@@ -234,9 +296,14 @@ def graph(
             console.print(f"  - {escape(e)}", soft_wrap=True)
         sys.exit(1)
 
+    if output == "terminal":
+        current, completed = _graph_run_view(engine, workflow, run_id)
+        console.print(build_tree(wf, current, completed))
+        return
+
     mermaid_text = to_mermaid(wf)
     print(mermaid_text, end="")
-    if not preview_diagram:
+    if output == "mermaid" and not preview_diagram:
         return
 
     name = Path(workflow).stem
