@@ -17,10 +17,10 @@ skill_usage() {
   echo "usage: $(basename "$0") link|unlink|status" >&2
 }
 
-# $1 = tool name for messages, $2 = skills folder of that tool, $3 = link|unlink|status
+# $1 = tool name for messages, $2 = skills folder of that tool, $3 = alias name (wtf or wf), $4 = link|unlink|status
 skill_action() {
-  local label="$1" tool_skills_dir="$2" action="$3"
-  local target="$tool_skills_dir/wtf"
+  local label="$1" tool_skills_dir="$2" alias_name="$3" action="$4"
+  local target="$tool_skills_dir/$alias_name"
 
   if [[ ! -f "$SKILL_SRC/SKILL.md" ]]; then
     echo "error: $SKILL_SRC/SKILL.md not found" >&2
@@ -64,7 +64,7 @@ skill_action() {
       elif [[ -e "$target" || -L "$target" ]]; then
         echo "$label: $target exists but is not this skill's link"
       else
-        echo "$label: not linked"
+        echo "$label: not linked ($target)"
       fi
       ;;
   esac

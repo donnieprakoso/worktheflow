@@ -175,3 +175,72 @@ def test_scripts_are_executable():
     """Given the three scripts, When I check them, Then each is executable."""
     for script in SCRIPTS:
         assert os.access(SKILLS_DIR / script, os.X_OK), script
+
+
+# --- `wf` as a second alias for the same skill (Use Case #26) ---
+
+WF_TARGETS = {
+    "claude.sh": ".claude/skills/wf",
+    "kiro.sh": ".kiro/skills/wf",
+    "opencode.sh": ".config/opencode/skills/wf",
+}
+
+
+# Scenario 13
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_link_also_creates_the_wf_alias(script, tmp_path):
+    """Given no link, When I run link, Then both wtf and wf are created as symlinks to the same repo skill."""
+    result = run(script, "link", tmp_path)
+    assert result.returncode == 0, result.stderr
+    wtf_link = target(script, tmp_path)
+    wf_link = tmp_path / WF_TARGETS[script]
+    assert wtf_link.is_symlink() and wf_link.is_symlink()
+    assert Path(os.readlink(wtf_link)) == SKILL_SRC
+    assert Path(os.readlink(wf_link)) == SKILL_SRC
+    assert (wf_link / "SKILL.md").is_file()
+
+
+# Scenario 14
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_unlink_removes_the_wf_alias_too(script, tmp_path):
+    """Given both links exist, When I run unlink, Then both wtf and wf are removed."""
+    run(script, "link", tmp_path)
+    result = run(script, "unlink", tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert not target(script, tmp_path).exists()
+    assert not (tmp_path / WF_TARGETS[script]).exists()
+
+
+# Scenario 15
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_status_reports_the_wf_alias_separately(script, tmp_path):
+    """Given status is run, Then it reports wtf and wf as two separate lines, not just one."""
+    result = run(script, "status", tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("not linked") == 2
+
+
+# Scenario 16
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_link_is_still_idempotent_with_both_aliases(script, tmp_path):
+    """Given both links already exist, When I run link again, Then exit is 0 and both report already linked."""
+    run(script, "link", tmp_path)
+    result = run(script, "link", tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count("already linked") == 2
+
+
+# Scenario 17
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_wtf_alias_still_links_when_only_wf_path_is_blocked(script, tmp_path):
+    """Given a foreign directory blocks only the wf path, When I run link, Then wtf (processed first) still links, exit is 1, and the foreign directory is untouched."""
+    wf_path = tmp_path / WF_TARGETS[script]
+    wf_path.mkdir(parents=True)
+    (wf_path / "mine.md").write_text("do not delete")
+
+    result = run(script, "link", tmp_path)
+    assert result.returncode == 1
+    assert target(script, tmp_path).is_symlink()
+    assert Path(os.readlink(target(script, tmp_path))) == SKILL_SRC
+    assert not wf_path.is_symlink()
+    assert (wf_path / "mine.md").read_text() == "do not delete"

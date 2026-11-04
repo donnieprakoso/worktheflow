@@ -67,13 +67,22 @@ def _build(tree_node, wf, name, path, current, completed, prefix, counter):
             continue
 
         child = tree_node.add(f"{edge} {_node_label(wf, dest, current, completed)}")
+        new_path = path | {dest}
         dest_outgoing = [t2 for t2 in wf["transitions"] if t2["source"] == dest]
-        if len(dest_outgoing) > 1:
-            # dest is itself a branch point: open a nested numbering region
-            _build(child, wf, dest, path | {dest}, current, completed, f"{idx}.", _Counter(1))
+        # Only transitions that make forward progress count toward "is this a
+        # branch" — a reject-style transition back to an already-visited state
+        # is a dead end for this walk, not a second path, and must not open a
+        # decimal level on its own (a workflow with reject on every state would
+        # otherwise nest one level deeper per state, the exact unreadable
+        # outcome flat numbering was chosen to avoid).
+        dest_forward = [t2 for t2 in dest_outgoing if t2["dest"] not in new_path]
+        if len(dest_forward) > 1:
+            # dest is itself a genuine fork/choice: open a nested numbering region
+            _build(child, wf, dest, new_path, current, completed, f"{idx}.", _Counter(1))
         else:
-            # straight continuation: stay flat in the same numbering region
-            _build(child, wf, dest, path | {dest}, current, completed, prefix, counter)
+            # straight continuation (any back-edges just render as leaves below):
+            # stay flat in the same numbering region
+            _build(child, wf, dest, new_path, current, completed, prefix, counter)
 
 
 def build_tree(
@@ -90,7 +99,8 @@ def build_tree(
         f"  [grey62]({wf['name']})[/grey62]"
     )
     initial_outgoing = [t for t in wf["transitions"] if t["source"] == initial]
-    if len(initial_outgoing) > 1:
+    initial_forward = [t for t in initial_outgoing if t["dest"] != initial]
+    if len(initial_forward) > 1:
         _build(root, wf, initial, {initial}, current, completed, "1.", _Counter(1))
     else:
         _build(root, wf, initial, {initial}, current, completed, "", _Counter(2))

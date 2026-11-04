@@ -164,3 +164,80 @@ def test_invalid_workflow_with_preview_opens_nothing(tmp_path, monkeypatch):
     result = runner.invoke(app, ["graph", "demo", "--preview"])
     assert result.exit_code == 1, result.output
     assert asked == []
+
+
+# Scenario 9
+def test_graph_with_no_argument_uses_the_only_workflow(tmp_path, monkeypatch):
+    """Given .wtf/workflows/ has exactly one workflow, When I run wtf graph with no argument, Then it renders that one."""
+    init_project(tmp_path, monkeypatch)
+    write_named(tmp_path, BASE)
+    result = runner.invoke(app, ["graph"])
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines()[0] == "stateDiagram-v2"
+
+
+# Scenario 10
+def test_graph_with_no_argument_and_no_workflows_fails_clearly(tmp_path, monkeypatch):
+    """Given .wtf/workflows/ is empty, When I run wtf graph with no argument, Then exit 1 with a clear message, not a generic 'missing argument' error."""
+    init_project(tmp_path, monkeypatch)
+    result = runner.invoke(app, ["graph"])
+    assert result.exit_code == 1, result.output
+    assert "no workflows found" in result.output.lower()
+
+
+# Scenario 11
+def test_graph_with_no_argument_and_multiple_workflows_fails_clearly(tmp_path, monkeypatch):
+    """Given .wtf/workflows/ has two or more workflows, When I run wtf graph with no argument, Then exit 1 listing them, rather than guessing."""
+    init_project(tmp_path, monkeypatch)
+    write_named(tmp_path, BASE, name="demo")
+    write_named(tmp_path, BASE, name="other")
+    result = runner.invoke(app, ["graph"])
+    assert result.exit_code == 1, result.output
+    assert "demo" in result.output and "other" in result.output
+
+
+# Scenario 12
+def test_graph_with_no_argument_and_no_wtf_folder_fails_clearly(tmp_path, monkeypatch):
+    """Given .wtf/ does not exist at all, When I run wtf graph with no argument, Then exit 1 pointing at wtf init."""
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["graph"])
+    assert result.exit_code == 1, result.output
+    assert "wtf init" in result.output
+
+
+# Scenario 13a (Use Case #28)
+def test_graph_default_mermaid_output_has_no_using_notice(tmp_path, monkeypatch):
+    """Given the default mermaid output (no --preview), When I run wtf graph demo, Then output stays pure diagram text — no 'Using' notice, so piping it stays clean."""
+    init_project(tmp_path, monkeypatch)
+    write_named(tmp_path, BASE)
+    result = runner.invoke(app, ["graph", "demo"])
+    assert result.exit_code == 0, result.output
+    assert "Using" not in result.output
+    assert result.output.splitlines()[0] == "stateDiagram-v2"
+
+
+# Scenario 13b (Use Case #28)
+def test_graph_terminal_and_html_show_which_file_was_used(tmp_path, monkeypatch):
+    """Given --output terminal or html, When I run wtf graph demo, Then it names the exact file it resolved, to avoid confusion about which one was used."""
+    init_project(tmp_path, monkeypatch)
+    write_named(tmp_path, BASE)
+    terminal = runner.invoke(app, ["graph", "demo", "--output", "terminal"])
+    assert terminal.exit_code == 0, terminal.output
+    assert "Using 'demo' located at" in terminal.output
+    assert ".wtf/workflows/demo.yaml" in terminal.output
+
+    stub_browser(monkeypatch)
+    html = runner.invoke(app, ["graph", "demo", "--output", "html"])
+    assert html.exit_code == 0, html.output
+    assert "Using 'demo' located at" in html.output
+
+
+# Scenario 13
+def test_graph_with_no_argument_passes_through_output_terminal(tmp_path, monkeypatch):
+    """Given exactly one workflow, When I run wtf graph with no argument and --output terminal, Then it renders the same numbered tree as naming it explicitly would."""
+    init_project(tmp_path, monkeypatch)
+    write_named(tmp_path, BASE)
+    implicit = runner.invoke(app, ["graph", "--output", "terminal"])
+    explicit = runner.invoke(app, ["graph", "demo", "--output", "terminal"])
+    assert implicit.exit_code == 0, implicit.output
+    assert implicit.output == explicit.output

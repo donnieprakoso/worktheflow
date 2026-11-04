@@ -43,10 +43,12 @@ ever read the value.
 **Making `/wtf` itself available in a given tool is a separate, per-machine step**, done once with
 the link scripts in `wtf/skills/`:
 ```
-./skills/claude.sh link      # ~/.claude/skills/wtf
-./skills/kiro.sh link        # ~/.kiro/skills/wtf
-./skills/opencode.sh link    # ~/.config/opencode/skills/wtf
+./skills/claude.sh link      # ~/.claude/skills/wtf and ~/.claude/skills/wf
+./skills/kiro.sh link        # ~/.kiro/skills/wtf and ~/.kiro/skills/wf
+./skills/opencode.sh link    # ~/.config/opencode/skills/wtf and ~/.config/opencode/skills/wf
 ```
+Each script links **both** `wtf` and `wf` as names for this same skill — same symlink target,
+same instructions, so `/wtf` and `/wf` behave identically and there is nothing to keep in sync.
 These are global (per `$HOME`, not per project) and independent of any `.wtf/` folder. If the user
 asks "how do I use this with <tool>", point them at the matching script — do not look for or write
 a `tool` field anywhere.
@@ -130,9 +132,10 @@ Creates the `.wtf/` files and folders.
    - Rejection needs an explicit `reject` transition from the state the proposal leaves.
 6. Run `wtf validate <name>`. Fix every error and run it again until it exits 0. Show the user any
    warnings.
-7. Run `wtf graph <name>` and show the diagram. Offer `--preview` to open it in a browser, or `--output terminal`
-   for a numbered tree right in this terminal (numbers like `4.1`/`4.2` mark a fork/choice branch — handy for
-   pointing at a specific step without typing its name).
+7. Run `wtf graph <name> --output terminal` and show the numbered tree right in this terminal
+   (numbers like `4.1`/`4.2` mark a fork/choice branch — handy for pointing at a specific step
+   without typing its name). Offer `--output mermaid` (the raw diagram text) or `--preview`
+   (opens it in a browser) if the user wants a different view.
 8. Do not start a run in build mode unless the user asks for one.
 
 ## run
@@ -256,10 +259,13 @@ the workflow file itself genuinely cannot be found anywhere.
    a path exactly as it accepts a name — it does not need to live in `.wtf/workflows/`, and does not
    need `.wtf/` to exist at all for the path form). If they didn't say which and `.wtf/workflows/` is
    empty, don't conclude there's nothing to graph — look for a workflow file elsewhere in the project
-   (one just discussed, or found by name/content) before asking the user where it is.
-2. **Render.** Default is `wtf graph <name-or-path>` (Mermaid, printed as text). Offer `--preview`
-   to open it in a browser, or `--output terminal` for a numbered Rich tree right in this terminal
-   (numbers like `4.1`/`4.2` mark a fork/choice branch). If a run already exists for this workflow,
-   `--output terminal` overlays its current/done progress automatically — no extra step needed.
+   (one just discussed, or found by name/content) before asking the user where it is. If
+   `.wtf/workflows/` has exactly one workflow, `wtf graph` with no argument at all already resolves
+   to it — you don't need to name it yourself in that case.
+2. **Render.** Default to `wtf graph <name-or-path> --output terminal` — the numbered Rich tree,
+   right in this terminal (numbers like `4.1`/`4.2` mark a fork/choice branch). If a run already
+   exists for this workflow, this overlays its current/done progress automatically — no extra step
+   needed. Offer `--output mermaid` (the raw diagram text) or `--preview` (opens it in a browser)
+   if the user wants a different view.
 3. If the workflow fails `wtf validate` (graph runs this check itself), show the errors instead of
    a diagram.

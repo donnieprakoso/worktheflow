@@ -226,3 +226,40 @@ def test_terminal_output_no_run_yet_renders_bare_structure(tmp_path, monkeypatch
     result = runner.invoke(app, ["graph", "demo", "--output", "terminal"])
     assert result.exit_code == 0, result.output
     assert "●" not in result.output and "✓" not in result.output
+
+
+# a -> b -> c (terminal), with a "reject" back-edge on every single state —
+# the exact shape that surfaced a real bug: every state has 2 outgoing
+# transitions (forward + reject), so a naive "2+ outgoing = branch" rule
+# opens a decimal level at every level, cascading into 1.1.1.1... .
+REJECT_EVERY_STATE_WF = {
+    "name": "demo",
+    "version": "1.0",
+    "initial": "a",
+    "states": [
+        {"name": "a"},
+        {"name": "b"},
+        {"name": "c", "terminal": True},
+    ],
+    "transitions": [
+        {"trigger": "submit", "source": "a", "dest": "b"},
+        {"trigger": "reject", "source": "a", "dest": "a"},
+        {"trigger": "submit", "source": "b", "dest": "c"},
+        {"trigger": "reject", "source": "b", "dest": "a"},
+    ],
+}
+
+
+# Scenario 10
+def test_terminal_output_reject_on_every_state_stays_flat(tmp_path, monkeypatch):
+    """Given a reject back-edge on every state, When I run --output terminal, Then numbering stays flat (1, 2, 3) — a reject loop never opens a decimal level on its own."""
+    init_project(tmp_path, monkeypatch)
+    write_wf(tmp_path, REJECT_EVERY_STATE_WF)
+    result = runner.invoke(app, ["graph", "demo", "--output", "terminal"])
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "[1]" in out  # a
+    assert "[2]" in out  # b
+    assert "[3]" in out  # c
+    assert "[1.1]" not in out
+    assert "[2.1]" not in out

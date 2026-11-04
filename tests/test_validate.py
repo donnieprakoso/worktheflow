@@ -63,6 +63,16 @@ def test_valid_yaml_workflow_exits_zero(tmp_path, monkeypatch):
     assert "valid" in result.output.lower()
 
 
+# Scenario 1b (Use Case #28)
+def test_validate_says_which_workflow_file_it_used(tmp_path, monkeypatch):
+    """Given a name that could match .yaml/.yml/.json, When I run wtf validate, Then it names the exact file it resolved, to avoid confusion about which one was used."""
+    write_wf(tmp_path, BASE)
+    result = validate(tmp_path, monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "Using 'demo' located at" in result.output
+    assert ".wtf/workflows/demo.yaml" in result.output
+
+
 # Scenario 2
 def test_valid_json_workflow_exits_zero(tmp_path, monkeypatch):
     """Given the same workflow saved as .json, When I run wtf validate, Then it exits 0."""

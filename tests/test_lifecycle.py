@@ -86,6 +86,17 @@ def test_start_creates_running_run_at_initial_state(tmp_path, monkeypatch):
     assert any(e["type"] == "run_started" for e in read_events(tmp_path, run_id))
 
 
+# Scenario 1b (Use Case #28)
+def test_start_says_which_workflow_file_it_used(tmp_path, monkeypatch):
+    """Given a valid workflow, When I run wtf start, Then it names the exact file it resolved, to avoid confusion about which one was used."""
+    init_project(tmp_path, monkeypatch)
+    write_wf(tmp_path, BASE)
+    result = start(tmp_path, monkeypatch)
+    assert result.exit_code == 0, result.output
+    assert "Using 'demo' located at" in result.output
+    assert ".wtf/workflows/demo.yaml" in result.output
+
+
 # Scenario 2
 def test_start_stores_inputs_and_status_shows_them(tmp_path, monkeypatch):
     """Given --input with a JSON object, When I start the run, Then the inputs are stored and shown by wtf status."""

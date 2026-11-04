@@ -17,14 +17,20 @@ class WtfEngine:
     def get_workflows_dir(self) -> Path:
         return self.cwd / ".wtf" / "workflows"
     
-    def load_workflow(self, name: str) -> Dict[str, Any]:
+    def resolve_workflow_path(self, name: str) -> Path:
+        """The actual file a workflow name resolves to, without loading it —
+        callers that need to tell the user which file is in play (there are
+        three candidate extensions for one name) use this directly."""
         wf_dir = self.get_workflows_dir()
         candidates = [wf_dir / f"{name}{ext}" for ext in ('.yaml', '.yml', '.json')]
         for path in candidates:
             if path.exists():
-                return self.validator.load_workflow(path)
+                return path
         searched = ", ".join(str(p.relative_to(self.cwd)) for p in candidates)
         raise FileNotFoundError(f"Workflow '{name}' not found. Searched: {searched}")
+
+    def load_workflow(self, name: str) -> Dict[str, Any]:
+        return self.validator.load_workflow(self.resolve_workflow_path(name))
     
     def get_allowed_transitions(self, workflow: Dict[str, Any], current_state: str) -> List[Dict[str, Any]]:
         allowed = []

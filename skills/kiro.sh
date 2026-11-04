@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Link or unlink the wtf skill for Kiro CLI: ~/.kiro/skills/wtf
+# Link or unlink the wtf skill for Kiro CLI, under both names:
+# ~/.kiro/skills/wtf and ~/.kiro/skills/wf
 #
 # usage: kiro.sh link|unlink|status
 #
@@ -12,8 +13,9 @@ case "${1:-}" in
   *) skill_usage; exit 2 ;;
 esac
 
-skill_action "Kiro" "$HOME/.kiro/skills" "$1"
+skill_action "Kiro" "$HOME/.kiro/skills" "wtf" "$1"
+skill_action "Kiro" "$HOME/.kiro/skills" "wf" "$1"
 
 if [[ "$1" == "link" ]]; then
-  echo "Kiro: to use it in a custom agent, add skill://~/.kiro/skills/wtf/SKILL.md to that agent's resources in .kiro/agents/<agent>.json."
+  echo "Kiro: to use it in a custom agent, add skill://~/.kiro/skills/wtf/SKILL.md (or .../wf/SKILL.md) to that agent's resources in .kiro/agents/<agent>.json."
 fi

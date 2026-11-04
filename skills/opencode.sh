@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Link or unlink the wtf skill for OpenCode: ~/.config/opencode/skills/wtf
+# Link or unlink the wtf skill for OpenCode, under both names:
+# ~/.config/opencode/skills/wtf and ~/.config/opencode/skills/wf
 #
 # usage: opencode.sh link|unlink|status
 #
@@ -12,4 +13,5 @@ case "${1:-}" in
   *) skill_usage; exit 2 ;;
 esac
 
-skill_action "OpenCode" "$HOME/.config/opencode/skills" "$1"
+skill_action "OpenCode" "$HOME/.config/opencode/skills" "wtf" "$1"
+skill_action "OpenCode" "$HOME/.config/opencode/skills" "wf" "$1"

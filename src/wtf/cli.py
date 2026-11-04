@@ -118,6 +118,21 @@ def _fail(message: str, code: int) -> None:
     sys.exit(code)
 
 
+def _display_path(engine: WtfEngine, path: Path) -> str:
+    """A path for human display: relative to cwd when it's under it, absolute otherwise."""
+    try:
+        return str(path.relative_to(engine.cwd))
+    except ValueError:
+        return str(path)
+
+
+def _print_using_workflow(name: str, path: Path, engine: WtfEngine) -> None:
+    """Say which exact file a resolved workflow name/default pointed at — a
+    name can match any of three extensions, and an omitted argument (Use
+    Case #27) or an auto-picked default is otherwise invisible."""
+    console.print(f"Using '{name}' located at {escape(_display_path(engine, path))}", soft_wrap=True)
+
+
 def _resolve_run(engine: WtfEngine, run_id: Optional[str], status: str) -> Optional[str]:
     """Return run_id if given; otherwise the most recent run with `status`."""
     if run_id:
@@ -187,9 +202,11 @@ def validate(workflow: str):
     """Validate a workflow definition against the schema."""
     engine = WtfEngine()
     try:
-        wf = engine.load_workflow(workflow)
+        wf_path = engine.resolve_workflow_path(workflow)
+        wf = engine.validator.load_workflow(wf_path)
     except Exception as e:
         _fail(str(e), 1)
+    _print_using_workflow(workflow, wf_path, engine)
 
     errors, warnings = SchemaValidator().check(wf)
     if errors:
@@ -206,14 +223,37 @@ def validate(workflow: str):
 _WORKFLOW_SUFFIXES = {".yaml", ".yml", ".json"}
 
 
-def _load_for_graph(engine: WtfEngine, arg: str) -> dict:
-    """A path if it has a workflow suffix or a separator; otherwise a workflow name."""
+def _default_workflow_name(engine: WtfEngine) -> str:
+    """Resolve `wtf graph` with no argument: the one workflow in
+    .wtf/workflows/, if there's exactly one — same "don't make them specify
+    it when there's only one answer" pattern as single-branch `--branch`."""
+    wf_dir = engine.get_workflows_dir()
+    if not wf_dir.is_dir():
+        raise FileNotFoundError(
+            "No .wtf/workflows/ folder found. Run 'wtf init' first, or pass a workflow name or path."
+        )
+    found = sorted(p for p in wf_dir.iterdir() if p.suffix in _WORKFLOW_SUFFIXES)
+    if not found:
+        raise FileNotFoundError("No workflows found in .wtf/workflows/. Run 'wtf build' first, or pass a path.")
+    if len(found) > 1:
+        names = ", ".join(p.stem for p in found)
+        raise FileNotFoundError(
+            f"Multiple workflows found in .wtf/workflows/: {names}. Pass one explicitly: wtf graph <name>."
+        )
+    return found[0].stem
+
+
+def _load_for_graph(engine: WtfEngine, arg: str) -> Tuple[dict, Path]:
+    """A path if it has a workflow suffix or a separator; otherwise a workflow
+    name. Returns the resolved file path alongside the loaded workflow, so
+    the caller can tell the user exactly which file was used."""
     if Path(arg).suffix in _WORKFLOW_SUFFIXES or "/" in arg:
         path = Path(arg)
         if not path.is_file():
             raise FileNotFoundError(f"Workflow file not found: {arg}")
-        return engine.validator.load_workflow(path)
-    return engine.load_workflow(arg)
+        return engine.validator.load_workflow(path), path
+    path = engine.resolve_workflow_path(arg)
+    return engine.validator.load_workflow(path), path
 
 
 def _derive_run_view(state: Dict[str, Any], events: List[Dict[str, Any]]) -> Tuple[set, set]:
@@ -269,7 +309,11 @@ def _graph_run_view(engine: WtfEngine, workflow_arg: str, run_id: Optional[str])
 
 @app.command()
 def graph(
-    workflow: str = typer.Argument(..., help="Workflow name in .wtf/workflows/, or a path to a workflow file."),
+    workflow: Optional[str] = typer.Argument(
+        None,
+        help="Workflow name in .wtf/workflows/, or a path to a workflow file. "
+        "Omit it to use the one workflow in .wtf/workflows/, if there's exactly one.",
+    ),
     preview_diagram: bool = typer.Option(False, "--preview", help="Render the diagram and open it in the default browser. Only applies to --output mermaid/html."),
     output: str = typer.Option("mermaid", "--output", help="mermaid (default, stdout), terminal (Rich tree, this terminal), or html (browser preview)."),
     run_id: Optional[str] = typer.Option(None, "--run", help="Run ID to overlay progress from. Only applies to --output terminal; default is the latest run for this workflow, if any."),
@@ -285,7 +329,9 @@ def graph(
 
     engine = WtfEngine()
     try:
-        wf = _load_for_graph(engine, workflow)
+        if workflow is None:
+            workflow = _default_workflow_name(engine)
+        wf, wf_path = _load_for_graph(engine, workflow)
     except Exception as e:
         _fail(str(e), 1)
 
@@ -297,6 +343,7 @@ def graph(
         sys.exit(1)
 
     if output == "terminal":
+        _print_using_workflow(workflow, wf_path, engine)
         current, completed = _graph_run_view(engine, workflow, run_id)
         console.print(build_tree(wf, current, completed))
         return
@@ -306,6 +353,7 @@ def graph(
     if output == "mermaid" and not preview_diagram:
         return
 
+    _print_using_workflow(workflow, wf_path, engine)
     name = Path(workflow).stem
     html_path = preview.write_preview(get_wtf_dir(Path.cwd()), name, mermaid_text)
     if not preview.can_open_browser():
@@ -332,9 +380,11 @@ def start(workflow: str, input_json: str = typer.Option("{}", "--input", help="R
 
     engine = WtfEngine()
     try:
-        wf = engine.load_workflow(workflow)
+        wf_path = engine.resolve_workflow_path(workflow)
+        wf = engine.validator.load_workflow(wf_path)
     except Exception as e:
         _fail(str(e), 1)
+    _print_using_workflow(workflow, wf_path, engine)
 
     errors = engine.validator.validate(wf)
     if errors:
